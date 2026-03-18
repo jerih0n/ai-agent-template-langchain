@@ -1,0 +1,89 @@
+---
+alwaysApply: true
+---
+
+# LangChain Agent Implementation (v1.2+)
+
+All agent code **must** follow the official LangChain documentation:
+https://docs.langchain.com/oss/python/langchain/overview
+
+Consult every relevant sub-page before writing agent code:
+- Overview → https://docs.langchain.com/oss/python/langchain/overview
+- Quickstart → https://docs.langchain.com/oss/python/langchain/quickstart
+- Installation → https://docs.langchain.com/oss/python/langchain/install
+- Agents → https://docs.langchain.com/oss/python/langchain/agents
+- Models → https://docs.langchain.com/oss/python/langchain/models
+- Tools → https://docs.langchain.com/oss/python/langchain/tools
+- Middleware → https://docs.langchain.com/oss/python/langchain/middleware/custom
+- Structured output → https://docs.langchain.com/oss/python/langchain/structured-output
+- Memory (short-term) → https://docs.langchain.com/oss/python/langchain/short-term-memory
+- Memory (long-term) → https://docs.langchain.com/oss/python/langchain/long-term-memory
+- Multi-agent → https://docs.langchain.com/oss/python/langchain/multi-agent
+- Streaming → https://docs.langchain.com/oss/python/langchain/streaming
+- Human-in-the-loop → https://docs.langchain.com/oss/python/langchain/human-in-the-loop
+- Context engineering → https://docs.langchain.com/oss/python/langchain/context-engineering
+- Providers / integrations → https://docs.langchain.com/oss/python/integrations/providers/overview
+
+---
+
+## Creating an agent
+
+```python
+from langchain.agents import create_agent
+
+agent = create_agent(
+    model=llm,
+    tools=[...],
+    system_prompt="...",
+    checkpointer=checkpointer,
+    middleware=[...],
+)
+```
+
+## Initialising the model
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.2,
+    openai_api_key="sk-...",   # always pass explicitly
+)
+```
+
+## Defining tools
+
+```python
+def my_tool(param: str) -> str:
+    """One-line description — this becomes the tool's schema."""
+    ...
+
+agent = create_agent(model=llm, tools=[my_tool])
+```
+
+
+## Structured output
+
+```python
+from pydantic import BaseModel
+
+class MyResponse(BaseModel):
+    answer: str
+
+agent = create_agent(model=llm, response_format=MyResponse)
+```
+
+---
+
+## Deprecated — never use these
+
+| ❌ Forbidden | ✅ Replacement |
+|---|---|
+| `initialize_agent` | `create_agent` |
+| `AgentExecutor` | `create_agent` |
+| `create_react_agent` (raw langgraph) | `create_agent` |
+| `LLMChain` | `create_agent` or `llm.invoke` |
+| `llm.predict` | `llm.invoke` |
+| `ConversationBufferMemory` | LangGraph checkpointer |
+| `from langchain.memory import ...` | LangGraph checkpointer |

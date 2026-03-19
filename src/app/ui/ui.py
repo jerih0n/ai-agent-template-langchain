@@ -36,6 +36,11 @@ def _extract_thread_id(raw_value) -> str | None:
     return str(raw_value)
 
 
+def _delete_button_update(thread_id: str | None) -> gr.update:
+    """Enable delete only when a persisted thread is selected."""
+    return gr.update(interactive=bool(_extract_thread_id(thread_id)))
+
+
 async def _fetch_thread_choices() -> list[tuple[str, str]]:
     """
     Fetch all threads and return as (display_label, thread_id) tuples.
@@ -80,12 +85,12 @@ def _make_handlers(agent: ChatAgent):
         message: str,
         history: list[dict[str, str]],
         thread_id: Optional[str],
-    ) -> tuple[list[dict[str, str]], str, gr.update]:
-        """Send a message to the agent; auto-creates a thread if needed."""
+    ) -> tuple[list[dict[str, str]], str, gr.update, gr.update]:
+        """Send a message to the agent; create a thread only on first send."""
         thread_id = _extract_thread_id(thread_id)
 
         if not message.strip():
-            return history, "", gr.update()
+            return history, "", gr.update(), _delete_button_update(thread_id)
 
         if not thread_id:
             try:
@@ -99,6 +104,7 @@ def _make_handlers(agent: ChatAgent):
                     ],
                     "",
                     gr.update(),
+                    _delete_button_update(None),
                 )
 
         history = history + [{"role": "user", "content": message}]
@@ -111,51 +117,44 @@ def _make_handlers(agent: ChatAgent):
             history = history + [{"role": "assistant", "content": f"Error: {exc}"}]
 
         choices = await _fetch_thread_choices()
-        return history, "", gr.update(choices=choices, value=thread_id)
+        return (
+            history,
+            "",
+            gr.update(choices=choices, value=thread_id),
+            _delete_button_update(thread_id),
+        )
 
-    async def load_threads() -> tuple[gr.update, list[dict[str, str]]]:
-        """Populate the thread dropdown and pre-load the most recent thread on startup."""
+    async def load_threads() -> tuple[gr.update, list[dict[str, str]], gr.update]:
+        """Populate the thread dropdown and start in a fresh unsaved conversation."""
         choices = await _fetch_thread_choices()
-        if not choices:
-            return gr.update(choices=choices, value=None), []
+        return (
+            gr.update(choices=choices, value=None),
+            [],
+            _delete_button_update(None),
+        )
 
-        latest_thread_id = choices[0][1]
-        try:
-            history = await agent.get_messages(thread_id=latest_thread_id)
-        except Exception:
-            logger.exception("Error loading messages for thread %s", latest_thread_id)
-            history = []
-
-        return gr.update(choices=choices, value=latest_thread_id), history
-
-    async def select_thread(thread_id) -> list[dict[str, str]]:
-        """Load conversation history when the user picks a thread."""
+    async def select_thread(thread_id) -> tuple[list[dict[str, str]], gr.update]:
+        """Load conversation history when the user picks a persisted thread."""
         thread_id = _extract_thread_id(thread_id)
         if not thread_id:
-            return []
+            return [], _delete_button_update(None)
         try:
-            return await agent.get_messages(thread_id=thread_id)
+            history = await agent.get_messages(thread_id=thread_id)
+            return history, _delete_button_update(thread_id)
         except Exception:
             logger.exception("Error loading messages for thread %s", thread_id)
-            return []
+            return [], _delete_button_update(None)
 
-    async def create_new_conversation() -> tuple[gr.update, list]:
-        """Create a fresh thread and switch the UI to it."""
-        try:
-            new_thread_id = await create_new_thread()
-            choices = await _fetch_thread_choices()
-            return gr.update(choices=choices, value=new_thread_id), []
-        except Exception:
-            logger.exception("Error creating new conversation")
-            choices = await _fetch_thread_choices()
-            return gr.update(choices=choices), []
-
-    async def delete_conversation(thread_id) -> tuple[gr.update, list]:
+    async def delete_conversation(thread_id) -> tuple[gr.update, list, gr.update]:
         """Delete the selected thread and clear the chat view."""
         thread_id = _extract_thread_id(thread_id)
         if not thread_id:
             choices = await _fetch_thread_choices()
-            return gr.update(choices=choices, value=None), []
+            return (
+                gr.update(choices=choices, value=None),
+                [],
+                _delete_button_update(None),
+            )
 
         try:
             await delete_thread(thread_id)
@@ -163,7 +162,11 @@ def _make_handlers(agent: ChatAgent):
             logger.exception("Error deleting thread %s", thread_id)
 
         choices = await _fetch_thread_choices()
-        return gr.update(choices=choices, value=None), []
+        return (
+            gr.update(choices=choices, value=None),
+            [],
+            _delete_button_update(None),
+        )
 
     async def refresh_after_send(thread_id) -> gr.update:
         """
@@ -181,7 +184,6 @@ def _make_handlers(agent: ChatAgent):
         send_message,
         load_threads,
         select_thread,
-        create_new_conversation,
         delete_conversation,
         refresh_after_send,
     )
@@ -205,7 +207,6 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
         send_message,
         load_threads,
         select_thread,
-        create_new_conversation,
         delete_conversation,
         refresh_after_send,
     ) = _make_handlers(agent)
@@ -219,16 +220,21 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
             # ── Left sidebar ──────────────────────────────────────────────
             with gr.Column(scale=1, min_width=250):
                 gr.Markdown("### Threads")
+                gr.Markdown(
+                    "A new thread is created automatically when you send the first message."
+                )
                 thread_list = gr.Dropdown(
                     choices=[],
                     label="Select Thread",
                     value=None,
                     interactive=True,
-                    allow_custom_value=True,
+                    allow_custom_value=False,
                 )
-                with gr.Row():
-                    new_thread_btn = gr.Button("New Conversation", variant="primary", scale=3)
-                    delete_thread_btn = gr.Button("🗑 Delete", variant="stop", scale=1)
+                delete_thread_btn = gr.Button(
+                    "Delete Thread",
+                    variant="stop",
+                    interactive=False,
+                )
 
             # ── Chat area ─────────────────────────────────────────────────
             with gr.Column(scale=3):
@@ -248,20 +254,23 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
             trigger(
                 fn=send_message,
                 inputs=[msg_input, chatbot, thread_list],
-                outputs=[chatbot, msg_input, thread_list],
+                outputs=[chatbot, msg_input, thread_list, delete_thread_btn],
             ).then(
                 fn=refresh_after_send,
                 inputs=[thread_list],
                 outputs=[thread_list],
             )
 
-        app.load(fn=load_threads, outputs=[thread_list, chatbot])
-        thread_list.change(fn=select_thread, inputs=[thread_list], outputs=[chatbot])
-        new_thread_btn.click(fn=create_new_conversation, outputs=[thread_list, chatbot])
+        app.load(fn=load_threads, outputs=[thread_list, chatbot, delete_thread_btn])
+        thread_list.change(
+            fn=select_thread,
+            inputs=[thread_list],
+            outputs=[chatbot, delete_thread_btn],
+        )
         delete_thread_btn.click(
             fn=delete_conversation,
             inputs=[thread_list],
-            outputs=[thread_list, chatbot],
+            outputs=[thread_list, chatbot, delete_thread_btn],
         )
 
     return app

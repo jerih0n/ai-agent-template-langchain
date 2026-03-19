@@ -35,11 +35,29 @@ A ready-to-run Python template for building a chat agent powered by the [LangCha
 ### 1 — Clone / copy the project
 
 ```bash
-# Clone or download; then enter the src/ directory
+# Clone or download the repo
+cd ai-agent-template-langchain
+```
+
+### 2 — Start PostgreSQL
+
+PostgreSQL is **required** for this template.
+
+If you want the fastest local setup, use Docker:
+
+```bash
+docker compose up -d postgres
+```
+
+This starts Postgres on `127.0.0.1:5432` with a default database named `chat_agent`.
+
+### 3 — Enter the app directory
+
+```bash
 cd src
 ```
 
-### 2 — Create a virtual environment
+### 4 — Create a virtual environment
 
 **Windows (PowerShell)**
 ```powershell
@@ -53,24 +71,24 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3 — Install dependencies
+### 5 — Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4 — Configure environment variables
+### 6 — Configure environment variables
 
 Copy the example file and fill in your values:
 
 **Windows**
 ```powershell
-copy .env.example .env
+copy env.example .env
 ```
 
 **macOS / Linux**
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 Then open `.env` in your editor and set at minimum:
@@ -82,16 +100,15 @@ POSTGRES_URL=postgresql://user:password@localhost:5432/chat_agent
 
 > **Note on the Postgres URL format**
 >
-> Use the standard `postgresql://` scheme.  
-> Do **not** use the SQLAlchemy-style `postgresql+psycopg://` prefix — the
-> template strips it automatically where needed for driver compatibility.
+> Use the standard `postgresql://` scheme.
+> The template also accepts `postgresql+psycopg://` and normalises it internally.
 
 **Full list of variables** (all optional except the two above):
 
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_API_KEY` | — | **Required.** Your OpenAI key. |
-| `POSTGRES_URL` | — | **Required.** Standard `postgresql://` connection string. |
+| `POSTGRES_URL` | — | **Required.** PostgreSQL connection string for threads + LangGraph memory. |
 | `DATABASE_URL` | — | Heroku-style alias for `POSTGRES_URL`. |
 | `APP_NAME` | `AI Chat Agent` | Title shown in the browser tab and UI heading. |
 | `APP_HOST` | `127.0.0.1` | Host the Gradio server binds to. |
@@ -99,7 +116,7 @@ POSTGRES_URL=postgresql://user:password@localhost:5432/chat_agent
 | `AGENT_MODEL` | `gpt-4o-mini` | Any LangChain-supported model string. |
 | `AGENT_TEMPERATURE` | `0.2` | LLM temperature (0.0 – 2.0). |
 
-### 5 — Run the app
+### 7 — Run the app
 
 ```bash
 python run.py
@@ -112,43 +129,63 @@ On first run, the template will automatically:
 2. Run any pending SQL migrations (creates the `threads` table).
 3. Set up the LangGraph checkpointer tables (`checkpoints`, `checkpoint_writes`, etc.).
 
+Threads are created automatically when the first message is sent. The app starts in a fresh unsaved conversation by default.
+
 ---
 
 ## Project structure
 
 ```
-src/
-├── run.py                               # Entry point — migrations → agent → Gradio
-├── requirements.txt
-├── .env.example                         # Copy to .env and fill in your values
-│
-└── app/
-    ├── core/
-    │   └── config.py                    # pydantic-settings config (reads .env)
+.
+├── docker-compose.yml                   # Optional local Postgres for the fastest setup
+├── requirements-dev.txt                 # Smoke-test dependencies
+├── tests/
+│   ├── test_startup.py
+│   └── test_ui.py
+└── src/
+    ├── env.example                      # Copy to .env and fill in your values
+    ├── run.py                           # Entry point — migrations → agent → Gradio
+    ├── requirements.txt
     │
-    ├── ai/
-    │   ├── agent.py                     # ChatAgent — wraps create_agent()
-    │   ├── prompts/
-    │   │   ├── default_system_prompt.md # ← CUSTOMISE: your agent's persona
-    │   │   └── thread_summary_prompt.md # Prompt used by the auto-summary middleware
-    │   ├── middlewares/
-    │   │   └── thread_summary.py        # @after_agent hook — labels new threads
-    │   └── memory/
-    │       └── short_lived_memory/
-    │           └── short_lived_memory_manager.py  # PostgresSaver + thread CRUD
-    │
-    ├── database/
-    │   └── sql_database/
-    │       ├── postgres_db_helper.py    # asyncpg (async) + psycopg3 (sync) helpers
-    │       ├── migrations_manager.py    # Discovers and runs *.sql migration files
-    │       ├── migrations/
-    │       │   └── 001_create_threads_table.sql
-    │       └── commands/
-    │           └── threads_commands.py  # Thread CRUD (INSERT / SELECT / DELETE)
-    │
-    └── ui/
-        └── ui.py                        # Gradio Blocks chat interface
+    └── app/
+        ├── core/
+        │   └── config.py                    # pydantic-settings config (reads .env)
+        │
+        ├── ai/
+        │   ├── agent.py                     # ChatAgent — wraps create_agent()
+        │   ├── prompts/
+        │   │   ├── default_system_prompt.md # ← CUSTOMISE: your agent's persona
+        │   │   └── thread_summary_prompt.md # Prompt used by the auto-summary middleware
+        │   ├── middlewares/
+        │   │   └── thread_summary.py        # @after_agent hook — labels new threads
+        │   └── memory/
+        │       └── short_lived_memory/
+        │           └── short_lived_memory_manager.py  # PostgresSaver + thread CRUD
+        │
+        ├── database/
+        │   └── sql_database/
+        │       ├── postgres_db_helper.py    # asyncpg (async) + psycopg3 (sync) helpers
+        │       ├── migrations_manager.py    # Discovers and runs *.sql migration files
+        │       ├── migrations/
+        │       │   └── 001_create_threads_table.sql
+        │       └── commands/
+        │           └── threads_commands.py  # Thread CRUD (INSERT / SELECT / DELETE)
+        │
+        └── ui/
+            └── ui.py                        # Gradio Blocks chat interface
 ```
+
+---
+
+## Customize First
+
+If you are using this as a starter template, these are the first files to edit:
+
+| File | Why you will likely change it |
+|---|---|
+| `app/ai/prompts/default_system_prompt.md` | Define your agent's role, tone, and rules |
+| `app/tools/example_tool.py` | Replace the example tool with your own tools |
+| `app/ai/agent.py` | Register tools, model config, and middleware |
 
 ---
 
@@ -220,16 +257,6 @@ Create a new numbered `.sql` file in `app/database/sql_database/migrations/`:
 
 It will be picked up and executed automatically on the next `python run.py`.
 
-### Run without Postgres (in-memory only)
-
-Pass `use_postgres_checkpointer=False` when constructing `ChatAgent`:
-
-```python
-agent = ChatAgent(use_postgres_checkpointer=False)
-```
-
-Conversation history will **not** persist across restarts.
-
 ### Add a custom `@after_agent` middleware hook
 
 Follow the pattern in [`app/ai/middlewares/thread_summary.py`](app/ai/middlewares/thread_summary.py)
@@ -245,10 +272,12 @@ See the [Middleware docs](https://docs.langchain.com/oss/python/langchain/middle
 
 ## Running tests
 
-No test runner is bundled in the template. We recommend [pytest](https://docs.pytest.org/):
+Minimal smoke tests are included for startup validation and the default UI thread flow.
+
+Install dev dependencies from the repository root:
 
 ```bash
-pip install pytest pytest-asyncio
+pip install -r requirements-dev.txt
 pytest
 ```
 
@@ -259,6 +288,7 @@ pytest
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `OPENAI_API_KEY` error on startup | Key missing from `.env` | Add `OPENAI_API_KEY=sk-...` to `.env` |
+| `Missing required environment variables` | `.env` is missing required values | Copy `env.example` to `.env` and fill in `OPENAI_API_KEY` and `POSTGRES_URL` |
 | `POSTGRES_URL is required` | URL missing from `.env` | Add `POSTGRES_URL=postgresql://...` to `.env` |
 | `can't subtract offset-naive and offset-aware datetimes` | Old code path (fixed) | Pull latest and re-run |
 | Thread list always empty | DB not reachable at startup | Check Postgres is running and the URL is correct |

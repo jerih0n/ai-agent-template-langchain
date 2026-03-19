@@ -19,6 +19,7 @@ from app.ai.memory.short_lived_memory.short_lived_memory_manager import (
     get_thread_messages,
 )
 from app.ai.middlewares import summarise_if_new
+from app.tools.example_tool import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ class ChatAgent:
 
     Environment variables:
         OPENAI_API_KEY  — required
-        POSTGRES_URL    — required for the Postgres checkpointer
+        POSTGRES_URL    — required for persistent thread memory
     """
 
     def __init__(
@@ -66,7 +67,6 @@ class ChatAgent:
         model: str | None = None,
         temperature: float | None = None,
         system_prompt: str | None = None,
-        use_postgres_checkpointer: bool = True,
     ) -> None:
         if not config.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is required to use ChatAgent.")
@@ -82,7 +82,6 @@ class ChatAgent:
         resolved_url = postgres_url or config.POSTGRES_URL
         self._checkpointer, self._checkpointer_cm = create_checkpointer(
             postgres_url=resolved_url,
-            use_postgres_checkpointer=use_postgres_checkpointer,
         )
         self._agent = self._build_agent()
 
@@ -105,7 +104,7 @@ class ChatAgent:
         )
         return create_agent(
             model=self._llm,
-            tools=[],  # ← Add your tools here
+            tools=[utc_now],
             system_prompt=self.system_prompt,
             checkpointer=self._checkpointer,
             middleware=[summarise_if_new],

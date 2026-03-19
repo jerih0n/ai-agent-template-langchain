@@ -15,7 +15,6 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage, AIMessage
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres import PostgresSaver  # type: ignore[import-not-found]
 
 from app.database.sql_database.commands.threads_commands import (
@@ -34,7 +33,6 @@ logger = logging.getLogger(__name__)
 def create_checkpointer(
     *,
     postgres_url: str | None,
-    use_postgres_checkpointer: bool = True,
 ) -> tuple[Any, Any | None]:
     """
     Create a LangGraph checkpointer for `create_agent(..., checkpointer=...)`.
@@ -44,13 +42,10 @@ def create_checkpointer(
     run_in_executor so the event loop is never blocked.
 
     Returns:
-        (checkpointer, context_manager)  — context_manager is None for InMemorySaver.
+        (checkpointer, context_manager)
     """
-    if not use_postgres_checkpointer:
-        return InMemorySaver(), None
-
     if not postgres_url:
-        raise ValueError("postgres_url is required when use_postgres_checkpointer=True.")
+        raise ValueError("postgres_url is required to use persistent thread memory.")
 
     cm = PostgresSaver.from_conn_string(postgres_url)
     checkpointer = cm.__enter__()
@@ -119,7 +114,7 @@ async def get_thread_messages(checkpointer: Any, *, thread_id: str) -> list[dict
     {"role": ..., "content": ...} format.
 
     Args:
-        checkpointer: A LangGraph checkpointer (PostgresSaver or InMemorySaver).
+        checkpointer: A LangGraph Postgres checkpointer.
         thread_id:    The conversation thread identifier.
 
     Returns:

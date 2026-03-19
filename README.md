@@ -171,6 +171,9 @@ The app starts in a fresh state with no thread selected by default. You can crea
         │       └── commands/
         │           └── threads_commands.py  # Thread CRUD (INSERT / SELECT / DELETE)
         │
+        ├── tools/
+        │   └── example_tool.py              # Example LangChain tool to replace or extend
+        │
         └── ui/
             └── ui.py                        # Gradio Blocks chat interface
 ```
@@ -198,7 +201,7 @@ Replace the placeholder text with your agent's role, tone, and domain knowledge.
 
 ### Add tools to the agent
 
-Open [`app/ai/agent.py`](app/ai/agent.py) and add any callable or
+Start by editing [`app/tools/example_tool.py`](app/tools/example_tool.py), then open [`app/ai/agent.py`](app/ai/agent.py) and add any callable or
 [LangChain tool](https://docs.langchain.com/oss/python/langchain/tools) to the `tools=[]` list:
 
 ```python

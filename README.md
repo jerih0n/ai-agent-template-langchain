@@ -129,7 +129,7 @@ On first run, the template will automatically:
 2. Run any pending SQL migrations (creates the `threads` table).
 3. Set up the LangGraph checkpointer tables (`checkpoints`, `checkpoint_writes`, etc.).
 
-Threads are created automatically when the first message is sent. The app starts in a fresh unsaved conversation by default.
+The app starts in a fresh state with no thread selected by default. You can create a thread with `New Conversation`, or just send the first message and let the app create one automatically.
 
 ---
 

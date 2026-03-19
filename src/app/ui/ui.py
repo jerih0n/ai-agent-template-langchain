@@ -145,6 +145,25 @@ def _make_handlers(agent: ChatAgent):
             logger.exception("Error loading messages for thread %s", thread_id)
             return [], _delete_button_update(None)
 
+    async def create_new_conversation() -> tuple[gr.update, list, gr.update]:
+        """Create a fresh thread and switch the UI to it."""
+        try:
+            new_thread_id = await create_new_thread()
+            choices = await _fetch_thread_choices()
+            return (
+                gr.update(choices=choices, value=new_thread_id),
+                [],
+                _delete_button_update(new_thread_id),
+            )
+        except Exception:
+            logger.exception("Error creating new conversation")
+            choices = await _fetch_thread_choices()
+            return (
+                gr.update(choices=choices, value=None),
+                [],
+                _delete_button_update(None),
+            )
+
     async def delete_conversation(thread_id) -> tuple[gr.update, list, gr.update]:
         """Delete the selected thread and clear the chat view."""
         thread_id = _extract_thread_id(thread_id)
@@ -184,6 +203,7 @@ def _make_handlers(agent: ChatAgent):
         send_message,
         load_threads,
         select_thread,
+        create_new_conversation,
         delete_conversation,
         refresh_after_send,
     )
@@ -207,6 +227,7 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
         send_message,
         load_threads,
         select_thread,
+        create_new_conversation,
         delete_conversation,
         refresh_after_send,
     ) = _make_handlers(agent)
@@ -220,9 +241,6 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
             # ── Left sidebar ──────────────────────────────────────────────
             with gr.Column(scale=1, min_width=250):
                 gr.Markdown("### Threads")
-                gr.Markdown(
-                    "A new thread is created automatically when you send the first message."
-                )
                 thread_list = gr.Dropdown(
                     choices=[],
                     label="Select Thread",
@@ -230,11 +248,18 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
                     interactive=True,
                     allow_custom_value=False,
                 )
-                delete_thread_btn = gr.Button(
-                    "Delete Thread",
-                    variant="stop",
-                    interactive=False,
-                )
+                with gr.Row():
+                    new_thread_btn = gr.Button(
+                        "New Conversation",
+                        variant="primary",
+                        scale=3,
+                    )
+                    delete_thread_btn = gr.Button(
+                        "Delete Thread",
+                        variant="stop",
+                        scale=1,
+                        interactive=False,
+                    )
 
             # ── Chat area ─────────────────────────────────────────────────
             with gr.Column(scale=3):
@@ -266,6 +291,10 @@ def create_ui(agent: ChatAgent) -> gr.Blocks:
             fn=select_thread,
             inputs=[thread_list],
             outputs=[chatbot, delete_thread_btn],
+        )
+        new_thread_btn.click(
+            fn=create_new_conversation,
+            outputs=[thread_list, chatbot, delete_thread_btn],
         )
         delete_thread_btn.click(
             fn=delete_conversation,

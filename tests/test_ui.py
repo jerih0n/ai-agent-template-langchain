@@ -27,7 +27,7 @@ async def test_load_threads_starts_in_new_thread_mode(monkeypatch: pytest.Monkey
     monkeypatch.setattr(ui_module, "get_all_threads", fake_get_all_threads)
 
     agent = FakeAgent()
-    _, load_threads, _, _, _ = ui_module._make_handlers(agent)
+    _, load_threads, _, _, _, _ = ui_module._make_handlers(agent)
 
     thread_update, history, delete_update = await load_threads()
 
@@ -51,7 +51,7 @@ async def test_send_message_creates_thread_on_first_message(
     monkeypatch.setattr(ui_module, "_fetch_thread_choices", fake_fetch_thread_choices)
 
     agent = FakeAgent()
-    send_message, _, _, _, _ = ui_module._make_handlers(agent)
+    send_message, _, _, _, _, _ = ui_module._make_handlers(agent)
 
     history, cleared_message, thread_update, delete_update = await send_message(
         "Hello",

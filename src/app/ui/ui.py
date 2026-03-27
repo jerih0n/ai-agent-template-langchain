@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Optional
 
 import gradio as gr
@@ -113,17 +114,28 @@ def _make_handlers(agent: ChatAgent):
                 )
                 return
 
-        # ── First yield: show user message instantly, clear the input box ──
-        history = history + [{"role": "user", "content": message}]
+        # Show user message immediately with a live "thinking" placeholder.
+        start_ts = time.monotonic()
+        history = history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": "Thinking... (0s)"},
+        ]
         yield history, "", gr.update(), _delete_button_update(thread_id)
 
-        # ── Second yield: append the agent response once it arrives ────────
+        # Run the model call in the background and update elapsed time every second.
+        task = asyncio.create_task(agent.send_message(thread_id=thread_id, message=message))
+        while not task.done():
+            elapsed_s = int(time.monotonic() - start_ts)
+            history[-1] = {"role": "assistant", "content": f"Thinking... ({elapsed_s}s)"}
+            yield history, "", gr.update(), _delete_button_update(thread_id)
+            await asyncio.sleep(1)
+
         try:
-            response = await agent.send_message(thread_id=thread_id, message=message)
-            history = history + [{"role": "assistant", "content": response.content}]
+            response = await task
+            history[-1] = {"role": "assistant", "content": response.content}
         except Exception as exc:
             logger.exception("Error sending message to agent")
-            history = history + [{"role": "assistant", "content": f"Error: {exc}"}]
+            history[-1] = {"role": "assistant", "content": f"Error: {exc}"}
 
         choices = await _fetch_thread_choices()
         yield (

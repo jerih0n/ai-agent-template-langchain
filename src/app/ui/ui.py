@@ -85,19 +85,24 @@ def _make_handlers(agent: ChatAgent):
         message: str,
         history: list[dict[str, str]],
         thread_id: Optional[str],
-    ) -> tuple[list[dict[str, str]], str, gr.update, gr.update]:
-        """Send a message to the agent; create a thread only on first send."""
+    ):
+        """Send a message to the agent; create a thread only on first send.
+
+        Yields twice so the user message appears in the chatbot immediately,
+        before the (potentially slow) agent response arrives.
+        """
         thread_id = _extract_thread_id(thread_id)
 
         if not message.strip():
-            return history, "", gr.update(), _delete_button_update(thread_id)
+            yield history, "", gr.update(), _delete_button_update(thread_id)
+            return
 
         if not thread_id:
             try:
                 thread_id = await create_new_thread()
             except Exception as exc:
                 logger.exception("Error auto-creating thread")
-                return (
+                yield (
                     history + [
                         {"role": "user", "content": message},
                         {"role": "assistant", "content": f"Failed to create thread: {exc}"},
@@ -106,9 +111,13 @@ def _make_handlers(agent: ChatAgent):
                     gr.update(),
                     _delete_button_update(None),
                 )
+                return
 
+        # ── First yield: show user message instantly, clear the input box ──
         history = history + [{"role": "user", "content": message}]
+        yield history, "", gr.update(), _delete_button_update(thread_id)
 
+        # ── Second yield: append the agent response once it arrives ────────
         try:
             response = await agent.send_message(thread_id=thread_id, message=message)
             history = history + [{"role": "assistant", "content": response.content}]
@@ -117,7 +126,7 @@ def _make_handlers(agent: ChatAgent):
             history = history + [{"role": "assistant", "content": f"Error: {exc}"}]
 
         choices = await _fetch_thread_choices()
-        return (
+        yield (
             history,
             "",
             gr.update(choices=choices, value=thread_id),

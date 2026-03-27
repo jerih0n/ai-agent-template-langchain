@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from langchain.agents.middleware import after_agent, AgentState  # type: ignore[import-not-found]
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.config import get_config  # type: ignore[import-not-found]
 from langgraph.runtime import Runtime  # type: ignore[import-not-found]
@@ -88,12 +88,27 @@ def summarise_if_new(state: AgentState, runtime: Runtime) -> dict[str, Any] | No
             return None
 
         messages = state.get("messages", [])
-        if len(messages) != 2:
-            return None
 
-        first_user_msg = next(
-            (m for m in messages if isinstance(m, HumanMessage)), None
-        )
+        # Walk the message list, counting only non-tool messages.
+        # Tool-related messages that are excluded:
+        #   - ToolMessage          (tool execution result)
+        #   - AIMessage with tool_calls (agent step that requested the tool)
+        # The counter short-circuits at 3 so we never scan beyond what we need.
+        non_tool_count = 0
+        first_user_msg = None
+        for m in messages:
+            if isinstance(m, ToolMessage) or (
+                isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
+            ):
+                continue
+            non_tool_count += 1
+            if non_tool_count > 2:
+                return None
+            if first_user_msg is None and isinstance(m, HumanMessage):
+                first_user_msg = m
+
+        if non_tool_count != 2:
+            return None
         if not first_user_msg:
             return None
 
